@@ -3,10 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { decodeEventLog, parseUnits } from "viem";
 import { useAccount, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
+import { AlertCircle, CheckCircle2, Loader2, X } from "lucide-react";
 
 import { FACTORY_ADDRESS } from "./config";
 import { circleCreatedEvent, factoryAbi } from "./abi";
 import { saveCircleLabel } from "./circleRegistry";
+import { useSelfId } from "@/app/hooks/useSelfId";
 
 const SECONDS_PER_DAY = 86_400;
 
@@ -32,11 +34,22 @@ export function CreateCircleDialog({
   onCreated?: () => void;
 }) {
   const { isConnected } = useAccount();
+  const {
+    isLinked,
+    reputationScore,
+    attestations,
+    verificationData,
+    linkSelfId,
+    isLinking,
+    isSubmittingOnchain,
+  } = useSelfId();
   const [form, setForm] = useState<FormState>(defaultFormState);
   const [formError, setFormError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [toasts, setToasts] = useState<Toast[]>([]);
   const pendingLabelRef = useRef<string>("");
+
+  const isVerified = isLinked && Boolean(verificationData);
 
   const {
     writeContract,
@@ -135,6 +148,12 @@ export function CreateCircleDialog({
       errors.contribution = "Contribution must be greater than zero.";
     }
 
+    // Require Self Protocol verification for contributions above 10 cUSD
+    if (parsedContribution > 10 && !isVerified) {
+      setFormError("Self Protocol verification required for contributions above 10 cUSD.");
+      return;
+    }
+
     if (parsedCycleDays <= 0) {
       errors.cycleLengthDays = "Cycle must be at least 1 day.";
     }
@@ -186,52 +205,119 @@ export function CreateCircleDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4 py-10">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-3 sm:px-4 py-4 sm:py-6 lg:py-10 overflow-y-auto">
+      {/* Toast Notifications */}
       {toasts.length > 0 && (
-        <div className="pointer-events-none absolute right-6 top-6 space-y-2">
+        <div className="pointer-events-none fixed right-3 sm:right-4 lg:right-6 top-3 sm:top-4 lg:top-6 space-y-2 z-[60] max-w-[calc(100vw-1.5rem)] sm:max-w-md">
           {toasts.map((toast) => (
             <div
               key={toast.id}
-              className={`rounded-2xl px-4 py-3 text-sm shadow-lg ${toast.variant === "success" ? "bg-emerald-500/90 text-emerald-950" : "bg-rose-500/90 text-rose-950"}`}
+              className={`rounded-xl sm:rounded-2xl px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm shadow-lg break-words ${
+                toast.variant === "success" 
+                  ? "bg-emerald-500/90 text-emerald-950" 
+                  : "bg-rose-500/90 text-rose-950"
+              }`}
             >
               {toast.message}
             </div>
           ))}
         </div>
       )}
-      <div className="w-full max-w-xl rounded-3xl border border-white/10 bg-slate-900/95 p-8 text-white shadow-2xl">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-cyan-200">New circle</p>
-            <h2 className="mt-2 text-3xl font-semibold">Design your rotation</h2>
-            <p className="mt-1 text-sm text-slate-400">Set contribution, cadence, and member cap in one go.</p>
+
+      {/* Dialog */}
+      <div className="w-full max-w-2xl rounded-2xl sm:rounded-3xl border border-white/10 bg-slate-900/95 p-4 sm:p-6 lg:p-8 text-white shadow-2xl my-auto">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3 sm:gap-4">
+          <div className="flex-1 min-w-0">
+            <p className="text-xs uppercase tracking-[0.25em] sm:tracking-[0.3em] text-cyan-200">
+              New circle
+            </p>
+            <h2 className="mt-1.5 sm:mt-2 text-xl sm:text-2xl lg:text-3xl font-semibold">
+              Design your rotation
+            </h2>
+            <p className="mt-1 text-xs sm:text-sm text-slate-400">
+              Set contribution, cadence, and member cap in one go.
+            </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full border border-white/20 px-3 py-1 text-sm text-slate-300 hover:border-white/40"
+            className="flex-shrink-0 rounded-full border border-white/20 p-2 sm:px-3 sm:py-1 text-slate-300 hover:border-white/40 hover:bg-white/5 transition-colors"
             disabled={isBusy}
+            aria-label="Close dialog"
           >
-            Close
+            <X className="h-4 w-4 sm:hidden" />
+            <span className="hidden sm:inline text-sm">Close</span>
           </button>
         </div>
 
-        <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
-          <label className="block text-sm">
+        <form className="mt-4 sm:mt-6 space-y-3 sm:space-y-4" onSubmit={handleSubmit}>
+          {/* Self Protocol Verification Status */}
+          {parsedContribution > 10 && (
+            <div className={`rounded-xl sm:rounded-2xl border p-3 sm:p-4 ${
+              isVerified 
+                ? "border-emerald-500/30 bg-emerald-500/10" 
+                : "border-amber-500/30 bg-amber-500/10"
+            }`}>
+              <div className="flex items-start sm:items-center gap-2 sm:gap-3">
+                {isVerified ? (
+                  <>
+                    <CheckCircle2 className="h-4 w-4 sm:h-5 sm:w-5 text-emerald-400 flex-shrink-0 mt-0.5 sm:mt-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs sm:text-sm font-semibold text-emerald-200">
+                        Verified with Self Protocol
+                      </p>
+                      <p className="text-xs text-emerald-300/80 mt-0.5">
+                        Reputation {reputationScore} · Attestations {attestations}
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5 text-amber-400 flex-shrink-0 mt-0.5 sm:mt-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs sm:text-sm font-semibold text-amber-200">
+                        Verification required
+                      </p>
+                      <p className="text-xs text-amber-300/80 mt-0.5">
+                        Link your Self ID before creating circles above 10 cUSD
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
+              {!isVerified && (
+                <button
+                  type="button"
+                  onClick={linkSelfId}
+                  className="mt-2 sm:mt-3 w-full rounded-full bg-amber-500 px-4 py-2 text-xs sm:text-sm font-semibold text-amber-950 transition hover:bg-amber-400 disabled:opacity-60 disabled:cursor-not-allowed"
+                  disabled={isLinking || isSubmittingOnchain || !isConnected}
+                >
+                  {isLinking ? "Launching Self" : "Verify with Self Protocol"}
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Circle Label */}
+          <label className="block text-xs sm:text-sm">
             <span className="text-slate-300">Circle label (for your dashboard)</span>
             <input
               type="text"
               value={form.name}
               onChange={handleChange("name")}
               placeholder="Sunrise Rotations"
-              className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/50 px-4 py-3 text-white placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
+              className="mt-1.5 sm:mt-2 w-full rounded-xl sm:rounded-2xl border border-white/10 bg-slate-950/50 px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base text-white placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/20 transition"
               disabled={isBusy}
             />
-            {fieldErrors.name && <p className="mt-1 text-xs text-rose-300">{fieldErrors.name}</p>}
+            {fieldErrors.name && (
+              <p className="mt-1 text-xs text-rose-300">{fieldErrors.name}</p>
+            )}
           </label>
 
-          <div className="grid gap-4 md:grid-cols-3">
-            <label className="text-sm">
+          {/* Grid Inputs */}
+          <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-3">
+            <label className="text-xs sm:text-sm">
               <span className="text-slate-300">Contribution (cUSD)</span>
               <input
                 type="number"
@@ -239,62 +325,78 @@ export function CreateCircleDialog({
                 step="0.1"
                 value={form.contribution}
                 onChange={handleChange("contribution")}
-                className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/50 px-4 py-3 text-white placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
+                className="mt-1.5 sm:mt-2 w-full rounded-xl sm:rounded-2xl border border-white/10 bg-slate-950/50 px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base text-white placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/20 transition"
                 disabled={isBusy}
               />
-              {fieldErrors.contribution && <p className="mt-1 text-xs text-rose-300">{fieldErrors.contribution}</p>}
+              {fieldErrors.contribution && (
+                <p className="mt-1 text-xs text-rose-300">{fieldErrors.contribution}</p>
+              )}
             </label>
 
-            <label className="text-sm">
+            <label className="text-xs sm:text-sm">
               <span className="text-slate-300">Cycle length (days)</span>
               <input
                 type="number"
                 min="1"
                 value={form.cycleLengthDays}
                 onChange={handleChange("cycleLengthDays")}
-                className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/50 px-4 py-3 text-white placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
+                className="mt-1.5 sm:mt-2 w-full rounded-xl sm:rounded-2xl border border-white/10 bg-slate-950/50 px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base text-white placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/20 transition"
                 disabled={isBusy}
               />
-              {fieldErrors.cycleLengthDays && <p className="mt-1 text-xs text-rose-300">{fieldErrors.cycleLengthDays}</p>}
+              {fieldErrors.cycleLengthDays && (
+                <p className="mt-1 text-xs text-rose-300">{fieldErrors.cycleLengthDays}</p>
+              )}
             </label>
 
-            <label className="text-sm">
+            <label className="text-xs sm:text-sm">
               <span className="text-slate-300">Max members</span>
               <input
                 type="number"
                 min="2"
                 value={form.maxMembers}
                 onChange={handleChange("maxMembers")}
-                className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/50 px-4 py-3 text-white placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
+                className="mt-1.5 sm:mt-2 w-full rounded-xl sm:rounded-2xl border border-white/10 bg-slate-950/50 px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base text-white placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/20 transition"
                 disabled={isBusy}
               />
-              {fieldErrors.maxMembers && <p className="mt-1 text-xs text-rose-300">{fieldErrors.maxMembers}</p>}
+              {fieldErrors.maxMembers && (
+                <p className="mt-1 text-xs text-rose-300">{fieldErrors.maxMembers}</p>
+              )}
             </label>
           </div>
 
-          <label className="block text-sm">
+          {/* Payout Order */}
+          <label className="block text-xs sm:text-sm">
             <span className="text-slate-300">Custom payout order (comma separated, optional)</span>
             <input
               type="text"
               value={form.payoutOrder}
               onChange={handleChange("payoutOrder")}
               placeholder="1,2,3,4"
-              className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/50 px-4 py-3 text-white placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
+              className="mt-1.5 sm:mt-2 w-full rounded-xl sm:rounded-2xl border border-white/10 bg-slate-950/50 px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base text-white placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/20 transition"
               disabled={isBusy}
             />
-            {fieldErrors.payoutOrder && <p className="mt-1 text-xs text-rose-300">{fieldErrors.payoutOrder}</p>}
+            {fieldErrors.payoutOrder && (
+              <p className="mt-1 text-xs text-rose-300">{fieldErrors.payoutOrder}</p>
+            )}
           </label>
 
-          <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4 text-sm text-slate-300">
+          {/* Preview */}
+          <div className="rounded-xl sm:rounded-2xl border border-white/10 bg-slate-950/40 p-3 sm:p-4 text-xs sm:text-sm text-slate-300">
             <p className="font-semibold text-white">Rotation preview</p>
-            <p className="mt-1 text-slate-400">{payoutPreview}</p>
+            <p className="mt-1 text-slate-400 break-all">{payoutPreview}</p>
           </div>
 
-          {formError && <p className="text-sm text-rose-300">{formError}</p>}
+          {/* Form Error */}
+          {formError && (
+            <div className="rounded-xl bg-rose-500/10 border border-rose-500/30 p-3 text-xs sm:text-sm text-rose-300">
+              {formError}
+            </div>
+          )}
 
+          {/* Submit Button */}
           <button
             type="submit"
-            className="w-full rounded-full bg-gradient-to-r from-cyan-400 via-emerald-400 to-lime-300 px-6 py-3 text-base font-semibold text-slate-900 transition disabled:cursor-not-allowed disabled:opacity-70"
+            className="w-full rounded-full bg-gradient-to-r from-cyan-400 via-emerald-400 to-lime-300 px-4 sm:px-6 py-2.5 sm:py-3 text-sm sm:text-base font-semibold text-slate-900 transition hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:scale-100"
             disabled={isBusy}
           >
             {isPending && "Confirm in wallet…"}
@@ -302,8 +404,9 @@ export function CreateCircleDialog({
             {!isBusy && "Deploy circle"}
           </button>
 
+          {/* Transaction Hash */}
           {txHash && (
-            <p className="text-center text-xs text-slate-500">
+            <p className="text-center text-xs text-slate-500 break-all">
               Tx hash: <span className="font-mono">{txHash}</span>
             </p>
           )}

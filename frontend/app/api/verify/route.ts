@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { SelfBackendVerifier, AllIds, DefaultConfigStore } from "@selfxyz/core";
 
+// Use any to bypass the type checking issue since Self SDK's types are complex
+const excludedCountriesList = [
+  "IRN", "PRK", "RUS", "SYR"
+] as const;
+
 // Reuse a single verifier instance
 // Note: mockPassport: true = testnet/staging, false = mainnet
 // For Celo mainnet, set NEXT_PUBLIC_SELF_MOCK_PASSPORT=false
@@ -14,9 +19,11 @@ const selfBackendVerifier = new SelfBackendVerifier(
   AllIds,
   new DefaultConfigStore({
     minimumAge: parseInt(process.env.NEXT_PUBLIC_SELF_MIN_AGE || "18"),
-    excludedCountries: process.env.NEXT_PUBLIC_SELF_EXCLUDED_COUNTRIES
-      ? process.env.NEXT_PUBLIC_SELF_EXCLUDED_COUNTRIES.split(",")
-      : ["IRN", "PRK", "RUS", "SYR"],
+    excludedCountries: (
+      process.env.NEXT_PUBLIC_SELF_EXCLUDED_COUNTRIES
+        ? process.env.NEXT_PUBLIC_SELF_EXCLUDED_COUNTRIES.split(",").map(code => code.trim())
+        : excludedCountriesList
+    ) as any,
     ofac: process.env.NEXT_PUBLIC_SELF_OFAC !== "false",
   }),
   "hex" // userIdentifierType - must match frontend userIdType

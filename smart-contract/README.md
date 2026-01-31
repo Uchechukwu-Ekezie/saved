@@ -8,3 +8,10 @@ Planned next steps:
 - Implement Factory and Circle skeletons
 - Write core unit tests
 - Configure Alfajores deploy script and envs
+
+
+
+
+UD's additions
+contract/SavingsCircleV2.sol
+test/SavingsCircleV2.tes

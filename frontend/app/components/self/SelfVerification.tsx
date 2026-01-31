@@ -29,7 +29,6 @@ export function SelfVerification({ onSuccess, onError, onClose }: SelfVerificati
   // For local dev with ngrok: use staging_https endpointType
   // Default to playground for now as it's more reliable
   const apiEndpoint = process.env.NEXT_PUBLIC_SELF_ENDPOINT || "https://playground.self.xyz/api/verify";
-  // Use staging_https for: playground, ngrok, or any non-mainnet endpoint
   // Only use "https" for actual mainnet self.xyz endpoint
   const isMainnet = apiEndpoint.includes("self.xyz") && 
                     !apiEndpoint.includes("playground") && 
